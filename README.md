@@ -1,6 +1,6 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
-   
+
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).  
 
@@ -43,13 +43,13 @@ Here is the data provided from the Simulator to the C++ Program
 #### Previous path data given to the Planner
 
 //Note: Return the previous list but with processed points removed, can be a nice tool to show how far along
-the path has processed since last time. 
+the path has processed since last time.
 
 ["previous_path_x"] The previous list of x points previously given to the simulator
 
 ["previous_path_y"] The previous list of y points previously given to the simulator
 
-#### Previous path's end s and d values 
+#### Previous path's end s and d values
 
 ["end_path_s"] The previous list's last point's frenet s value
 
@@ -57,7 +57,7 @@ the path has processed since last time.
 
 #### Sensor Fusion Data, a list of all other car's attributes on the same side of the road. (No Noise)
 
-["sensor_fusion"] A 2d vector of cars and then that car's [car's unique ID, car's x position in map coordinates, car's y position in map coordinates, car's x velocity in m/s, car's y velocity in m/s, car's s position in frenet coordinates, car's d position in frenet coordinates. 
+["sensor_fusion"] A 2d vector of cars and then that car's [car's unique ID, car's x position in map coordinates, car's y position in map coordinates, car's x velocity in m/s, car's y velocity in m/s, car's s position in frenet coordinates, car's d position in frenet coordinates.
 
 ## Details
 
@@ -87,7 +87,7 @@ A really helpful resource for doing this project and creating smooth trajectorie
   * Run either `install-mac.sh` or `install-ubuntu.sh`.
   * If you install from source, checkout to commit `e94b6e1`, i.e.
     ```
-    git clone https://github.com/uWebSockets/uWebSockets 
+    git clone https://github.com/uWebSockets/uWebSockets
     cd uWebSockets
     git checkout e94b6e1
     ```
@@ -111,35 +111,23 @@ Note: regardless of the changes you make, your project must be buildable using
 cmake and make!
 
 
-## Call for IDE Profiles Pull Requests
+### Method and Implementation
 
-Help your fellow students!
+#### Trajectory Generation
 
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to ensure
-that students don't feel pressured to use one IDE or another.
+The project includes some code to generate a spline that will not collide with vehicles ahead and will attempt to maintain a maximum set speed. Here I use [this](https://kluge.in-chemnitz.de/opensource/spline/) spline generation code to create a smooth path. In this case, the speed is set to 49.5MPH to stay below the 50MPH limit. Since it builds off of previous trajectories, we are able to maintain smooth trajectories between computation cycles.
+There are a few shortcomings with this method.
+1. Matching the speed of the vehicle ahead is crude. It decrements by 0.224 MPH or 0.1 m/s if a vehicle is within 30 meters ahead of the ego. It will then increment the speed when it is further than 30 meters away. When converted to acceleration (assuming one increment or decrement by this amount per computation cycle of 20ms), this gets a +/-5 m/s^2 rate which is safely below the +/-10 m/s^2 limit. The shortcoming of this is that maintaining distance from a vehicle ahead is not smooth. The vehicle accelerates and decelerates between 30 meters of distance. A better implementation would be to match the speed and use a PID controller to maintain a more constant distance.
+2. We don't have much control over the jerk in the trajectory and assume the road is within these constraints. If the road conditions were more diverse, we would see trajectories that we would have to reduce speed for in order to stay within the jerk constraints.
 
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
+#### Path Planning
 
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
+Once the basic vehicle following logic was implemented, the next step was to add safe and smooth lane changes to the logic. Here I implement a very basic dual-state state machine. The vehicle can either:
+- keep lane
 
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
+or
 
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
+- change lane
 
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
+The logic is as follows:
+The vehicle will keep the current lane so long as it is driving the maximum speed (a condition that is always met unless there is a car ahead). If the speed is less than the target speed (49.5MPH), I use sensor fusion data to see if the other lanes are open. If a vehicle exists in a window that is at most 10m behind the ego and at most 30m ahead of the ego, that lane is considered blocked and not safe for a lane change. Otherwise, it is marked as safe. Then, a lane to change to is picked. It must be unblocked and only one lane change of direction since changing two lanes at once often fails the jerk constraint and could cause unsafe driving situations. It will transition to the lane change state until the ego current position and last trajectory position is within a certain bound in the center of the lane. This prevents rapid successive lane changes that could be too fast and fail the jerk constraint. 
